@@ -64,4 +64,10 @@ test_ecc_dsa$(DOTEXE): test_ecc_dsa.o ecc.o utils.o ecc_dh.o \
 	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
 
+mytest_image_verification$(DOTEXE): mytest_image_verification.o sha256.o utils.o ecc.o ecc_dh.o \
+		ecc_dsa.o ecc_platform_specific.o
+	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) -o $@
+
+
+
 -include $(TEST_DEPS)

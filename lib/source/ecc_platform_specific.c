@@ -55,9 +55,8 @@
  *  uECC_platform_specific.c -- Implementation of platform specific functions
  */
 
-
-#if defined(unix) || defined(__linux__) || defined(__unix__) || \
-    defined(__unix) |  (defined(__APPLE__) && defined(__MACH__)) || \
+#if defined(unix) || defined(__linux__) || defined(__unix__) ||     \
+    defined(__unix) || (defined(__APPLE__) && defined(__MACH__)) || \
     defined(uECC_POSIX)
 
 /* Some POSIX-like system with /dev/urandom or /dev/random. */
@@ -71,25 +70,30 @@
 #define O_CLOEXEC 0
 #endif
 
-int default_CSPRNG(uint8_t *dest, unsigned int size) {
+int default_CSPRNG(uint8_t *dest, unsigned int size)
+{
 
   /* input sanity check: */
-  if (dest == (uint8_t *) 0 || (size <= 0))
+  if (dest == (uint8_t *)0 || (size <= 0))
     return 0;
 
   int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
-  if (fd == -1) {
+  if (fd == -1)
+  {
     fd = open("/dev/random", O_RDONLY | O_CLOEXEC);
-    if (fd == -1) {
+    if (fd == -1)
+    {
       return 0;
     }
   }
 
   char *ptr = (char *)dest;
-  size_t left = (size_t) size;
-  while (left > 0) {
+  size_t left = (size_t)size;
+  while (left > 0)
+  {
     ssize_t bytes_read = read(fd, ptr, left);
-    if (bytes_read <= 0) { // read failed
+    if (bytes_read <= 0)
+    { // read failed
       close(fd);
       return 0;
     }
@@ -101,5 +105,61 @@ int default_CSPRNG(uint8_t *dest, unsigned int size) {
   return 1;
 }
 
-#endif /* platform */
+#elif defined(_WIN32) || defined(_WIN64)
 
+/* Fallback for other platforms.
+ * Prefer providing a platform-specific secure RNG. For portability and to
+ * avoid additional link-time dependencies in this tree, provide a simple
+ * fallback based on the C library `rand()` seeded from the time. This is
+ * insecure and should be replaced with a proper OS CSPRNG on production
+ * systems.
+ */
+#include <stdlib.h>
+#include <time.h>
+#include <stdint.h>
+
+int default_CSPRNG(uint8_t *dest, unsigned int size)
+{
+  if (dest == (uint8_t *)0 || (size == 0))
+    return 0;
+
+  static int seeded = 0;
+  if (!seeded)
+  {
+    srand((unsigned)time(NULL));
+    seeded = 1;
+  }
+
+  for (unsigned int i = 0; i < size; ++i)
+  {
+    dest[i] = (uint8_t)(rand() & 0xFF);
+  }
+
+  return 1;
+}
+
+#else
+/* Windows-specific implementation using CryptGenRandom.
+ * This is more secure than the generic fallback below.
+ */
+#include <wincrypt.h>
+#include <stdint.h>
+
+int default_CSPRNG(uint8_t *dest, unsigned int size)
+{
+  if (dest == (uint8_t *)0 || (size == 0))
+    return 0;
+
+  HCRYPTPROV hProvider = 0;
+  if (!CryptAcquireContext(&hProvider, NULL, NULL, PROV_RSA_FULL, 0))
+  {
+    return 0;
+  }
+
+  BOOL success = CryptGenRandom(hProvider, (DWORD)size, dest);
+  CryptReleaseContext(hProvider, 0);
+
+  return success ? 1 : 0;
+}
+
+#endif /* platform */
